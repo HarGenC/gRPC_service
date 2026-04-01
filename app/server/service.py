@@ -36,6 +36,7 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             expire = None
             if request.ttl_seconds > 0:
                 expire = time.time() + request.ttl_seconds
+
             self.store[request.key] = {"value": request.value, "expired_at": expire}
             self.store.move_to_end(request.key)
 
@@ -51,16 +52,14 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
         def job():
             now = time.time()
             if request.key not in self.store:
-                print("here1")
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key not found")
                 return kvstore_pb2.GetResponse()
             result = self.store[request.key]
 
-            expire_at = result.get("expire_at")
+            expire_at = result.get("expired_at")
 
             if expire_at is not None and expire_at < now:
-                print("here2")
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key's time is expired")
                 return kvstore_pb2.GetResponse()
