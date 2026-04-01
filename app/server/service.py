@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import OrderedDict
 
 import grpc
 
@@ -7,8 +8,9 @@ from app.generated import kvstore_pb2, kvstore_pb2_grpc
 
 
 class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
-    def __init__(self):
-        self.store = {}
+    def __init__(self, capacity: int = 10):
+        self.store = OrderedDict()
+        self.capacity = capacity
         self.queue = asyncio.Queue()
         asyncio.create_task(self._worker())
 
@@ -35,6 +37,10 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             if request.ttl_seconds > 0:
                 expire = time.time() + request.ttl_seconds
             self.store[request.key] = {"value": request.value, "expired_at": expire}
+            self.store.move_to_end(request.key)
+
+            if len(self.store) > self.capacity:
+                self.store.popitem(last=False)
             return kvstore_pb2.PutResponse()
 
         return await self._run_in_queue(job)
@@ -45,6 +51,7 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
         def job():
             now = time.time()
             if request.key not in self.store:
+                print("here1")
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key not found")
                 return kvstore_pb2.GetResponse()
@@ -53,10 +60,12 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             expire_at = result.get("expire_at")
 
             if expire_at is not None and expire_at < now:
+                print("here2")
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key's time is expired")
                 return kvstore_pb2.GetResponse()
 
+            self.store.move_to_end(request.key)
             return kvstore_pb2.GetResponse(value=result.get("value"))
 
         return await self._run_in_queue(job)
