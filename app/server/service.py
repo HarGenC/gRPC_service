@@ -85,6 +85,18 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
 
     async def List(self, request, context):
         """List: вернуть все ключи и значения с данным prefix. Истёкшие по TTL не возвращать."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+
+        def job():
+            response = kvstore_pb2.ListResponse()
+            now = time.time()
+            for key, value in self.store.items():
+                if key.startswith(request.prefix) and (
+                    value.get("expired_at") is None or value.get("expired_at") > now
+                ):
+                    item = response.items.add()
+                    item.key = key
+                    item.value = value.get("value")
+
+            return response
+
+        return await self._run_in_queue(job)
