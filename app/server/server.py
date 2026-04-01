@@ -3,8 +3,8 @@ from concurrent import futures
 
 import grpc
 
-from generated import kvstore_pb2_grpc
-from server.service import KVStoreService
+from app.generated import kvstore_pb2_grpc
+from app.server.service import KVStoreService
 
 
 async def serve():
@@ -13,9 +13,9 @@ async def serve():
     kvstore_pb2_grpc.add_KeyValueStoreServicer_to_server(KVStoreService(), server)
 
     server.add_insecure_port("[::]:8000")
-    server.start()
+    await server.start()
 
-    server.wait_for_termination()
+    await server.wait_for_termination()
 
 
 if __name__ == "__main__":

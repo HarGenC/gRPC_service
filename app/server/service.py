@@ -3,7 +3,7 @@ import time
 
 import grpc
 
-from generated import kvstore_pb2, kvstore_pb2_grpc
+from app.generated import kvstore_pb2, kvstore_pb2_grpc
 
 
 class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
