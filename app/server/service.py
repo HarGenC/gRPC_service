@@ -9,6 +9,8 @@ from app.generated import kvstore_pb2, kvstore_pb2_grpc
 class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
     def __init__(self):
         self.store = {}
+        self.queue = asyncio.Queue()
+        asyncio.create_task(self._worker())
 
     async def _worker(self):
         while True:
@@ -32,7 +34,7 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             expire = None
             if request.ttl_seconds > 0:
                 expire = time.time() + request.ttl_seconds
-            self.store[request.key] = {"value": request.value, "ttl_seconds": expire}
+            self.store[request.key] = {"value": request.value, "expired_at": expire}
             return kvstore_pb2.PutResponse()
 
         return await self._run_in_queue(job)
@@ -45,15 +47,17 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             if request.key not in self.store:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key not found")
-                return kvstore_pb2.PutResponse()
+                return kvstore_pb2.GetResponse()
             result = self.store[request.key]
 
-            if result.get("ttl_seconds") < now:
+            expire_at = result.get("expire_at")
+
+            if expire_at is not None and expire_at < now:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key's time is expired")
-                return kvstore_pb2.PutResponse()
+                return kvstore_pb2.GetResponse()
 
-            return kvstore_pb2.PutResponse(result.get("value"))
+            return kvstore_pb2.GetResponse(value=result.get("value"))
 
         return await self._run_in_queue(job)
 
@@ -64,10 +68,10 @@ class KVStoreService(kvstore_pb2_grpc.KeyValueStoreServicer):
             if request.key not in self.store:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("Key not found")
-                return kvstore_pb2.PutResponse()
+                return kvstore_pb2.DeleteResponse()
 
             del self.store[request.key]
-            return kvstore_pb2.PutResponse()
+            return kvstore_pb2.DeleteResponse()
 
         return await self._run_in_queue(job)
 
